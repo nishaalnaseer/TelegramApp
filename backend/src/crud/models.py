@@ -1,13 +1,12 @@
-from typing import List
-from typing import Optional
-from sqlalchemy import ForeignKey, Integer, BigInteger, DateTime, TIMESTAMP, Column
+from datetime import datetime
+from sqlalchemy import ForeignKey, Integer, BigInteger, DateTime, \
+    TIMESTAMP, Column
 from sqlalchemy import String
-from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
-from sqlalchemy.orm import relationship
 from src.crud.database import Base
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.mysql import DATETIME
 
 
 class User(Base):
@@ -19,10 +18,10 @@ class User(Base):
         nullable=False
     )
     tg_id: Mapped[BigInteger] = mapped_column(
-        unique=True, nullable=False
+        BigInteger, unique=True, nullable=False
     )
     username: Mapped[str] = mapped_column(
-        unique=True, nullable=False
+        String(30), unique=True, nullable=False
     )
     first_name: Mapped[str] = mapped_column(
         String(30), nullable=False
@@ -50,10 +49,22 @@ class Message(Base):
         unique=True,
         nullable=False
     )
+    tg_id: Mapped[BigInteger] = mapped_column(
+        String(4096), nullable=False, unique=True
+    )
     message: Mapped[str] = mapped_column(String(4096), nullable=False)
-    sender: Mapped[Integer] = Column(Integer, ForeignKey("user.id"))
-    receiver: Mapped[Integer] = Column(Integer, ForeignKey("user.id"))
-    time_sent: Mapped[DateTime] = mapped_column(
+    sender: Mapped[int] = Column(
+        Integer,
+        ForeignKey("user.id"),
+        nullable=False,
+    )
+    receiver: Mapped[int] = Column(
+        Integer,
+        ForeignKey("user.id"),
+        nullable=False,
+    )
+    time_sent: Mapped[DATETIME] = mapped_column(
+        DATETIME,
         default=TIMESTAMP(timezone=True),
         server_default=func.current_timestamp(),
         nullable=False
@@ -70,8 +81,8 @@ class OTP(Base):
     )
     message: Mapped[str] = mapped_column(String(4096), nullable=False)
     receiver: Mapped[str] = mapped_column(String(12), unique=True, nullable=False)
-    time_sent: Mapped[DateTime] = mapped_column(
-        default=TIMESTAMP(timezone=True),
-        server_default=func.current_timestamp(),
+    time_sent: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        default=datetime.now(),
         nullable=False
     )

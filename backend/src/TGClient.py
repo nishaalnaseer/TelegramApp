@@ -1,9 +1,13 @@
 import asyncio
+import json
+import logging
 import os
 from os import getenv
 from typing import Coroutine
+from telethon.events.newmessage import EventCommon, NewMessage
+from telethon import TelegramClient, events
 
-from telethon import TelegramClient
+logger = logging.getLogger("TG-Client")
 
 
 class TGClient:
@@ -18,8 +22,30 @@ class TGClient:
 
         api_id = int(api_id)
 
-        self._app = TelegramClient("Senahiya", api_id, api_hash)
+        _app = TelegramClient("Senahiya", api_id, api_hash)
+        self._app = _app
         self._message_queue = []
+
+        @_app.on(events.NewMessage(pattern=''))
+        async def on_message(event: NewMessage.Event):
+            chat_id = event.chat_id
+            sender_id = event.sender_id
+
+            if chat_id != sender_id:
+                self.send_message(
+                    chat_id,
+                    message="Group messaging not allowed"
+                )
+                return
+            if event.bot:
+                self.send_message(
+                    chat_id,
+                    message="Bots not allowed"
+                )
+                return
+
+            sender = await event.get_sender()
+            print(sender.to_json())
 
     async def _start(self):
         coro = self._app.start()
@@ -63,7 +89,15 @@ class TGClient:
             await asyncio.sleep(1.1)
 
     async def __send_message(self, receiver: str, message: str):
-        await self._app.send_message("", "")
+        try:
+            await self._app.send_message(receiver, message)
+        except Exception as e:
+            logger.error(e, exc_info=True)
 
-    async def send_message(self):
-        await self.__send_message("", "")
+    def _send_message(self, receiver, message, **kwargs):
+        coro = self.__send_message(receiver, message)
+        self._message_queue.append(coro)
+
+    def send_message(self, receiver, message):
+        self._send_message(receiver, message)
+

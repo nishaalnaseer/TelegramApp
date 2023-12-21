@@ -1,25 +1,29 @@
 import os
 from fastapi import FastAPI, HTTPException
+from starlette.requests import Request
+
 from src.utils import lifespan, client
 
 
 app = FastAPI(lifespan=lifespan)
-us = os.getenv("user-id")
-us_password = os.getenv("user-pass")
+
+
+def validate_client(_client: str):
+    return _client == "127.0.0.1" or \
+        _client[:8] == "10.62.12" or _client[:8] == "10.62.10"
 
 
 @app.post("/message/contact")
 async def send_message_contact(
-        user: str, password: str, text: str, to: str
+        request: Request, text: str, to: str
 ):
+    _client = request.client.host
 
-    # i know there can be better auth but rn im too lazy
-    if user.lower() != us or \
-            password.lower() != us_password:
+    if not validate_client(client):
         raise HTTPException(
-            401,
-            "Incorrect credentials"
+            status_code=403,
+            detail="Forbidden to users"
         )
 
-    client.send_message(to, text)
+    await client.send_message(to, text)
     return {"details": "success"}

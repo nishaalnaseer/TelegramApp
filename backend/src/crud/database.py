@@ -15,10 +15,12 @@ user = getenv("database-username")
 password = getenv("database-password")
 
 url = f"mysql+aiomysql://{user}:{password}@{host}:{port}/{db}"
-engine = create_async_engine(url)
-async_session = async_sessionmaker(bind=engine)
-
-
+engine = create_async_engine(url,)
+async_session = async_sessionmaker(
+    bind=engine,
+    expire_on_commit=False,
+    autoflush=False
+)
 Base = declarative_base()
 
 

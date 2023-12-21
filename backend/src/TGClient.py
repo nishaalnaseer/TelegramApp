@@ -1,11 +1,15 @@
 import asyncio
-import json
 import logging
 import os
-from os import getenv
-from typing import Coroutine
-from telethon.events.newmessage import EventCommon, NewMessage
+from collections import OrderedDict
+
+from sqlalchemy import select
+from telethon.events.newmessage import NewMessage
 from telethon import TelegramClient, events
+
+from src.crud.database import async_session
+from src.crud.models import OTP, Message, User
+from src.crud.utils import insert_object, get_user_by_id, update_user
 
 logger = logging.getLogger("TG-Client")
 
@@ -19,33 +23,21 @@ class TGClient:
         else:
             api_id = os.getenv("prod-app-id")
             api_hash = os.getenv("prod-app-hash")
-
+        self._ME = None
         api_id = int(api_id)
 
         _app = TelegramClient("Senahiya", api_id, api_hash)
         self._app = _app
         self._message_queue = []
+        self._my_messages = OrderedDict()
 
-        @_app.on(events.NewMessage(pattern=''))
-        async def on_message(event: NewMessage.Event):
-            chat_id = event.chat_id
-            sender_id = event.sender_id
+        @_app.on(events.NewMessage(pattern='', incoming=True))
+        async def _on_message_in(event: NewMessage.Event):
+            await self._message_in(event)
 
-            if chat_id != sender_id:
-                self.send_message(
-                    chat_id,
-                    message="Group messaging not allowed"
-                )
-                return
-            if event.bot:
-                self.send_message(
-                    chat_id,
-                    message="Bots not allowed"
-                )
-                return
-
-            sender = await event.get_sender()
-            print(sender.to_json())
+        @_app.on(events.NewMessage(pattern='', outgoing=True))
+        async def _on_message_out(event: NewMessage.Event):
+            await self._message_out(event)
 
     async def _start(self):
         coro = self._app.start()
@@ -60,6 +52,15 @@ class TGClient:
 
     async def _queue_runner(self):
         loop = asyncio.get_running_loop()
+
+        while not self._app.is_connected():
+            logger.info("Not yet connected to telegram, going to sleep")
+            await asyncio.sleep(1)
+
+        logger.info("Connected to telegram finishing initialisation "
+                    "and starting message queue")
+        _me = await self._app.get_me()
+        self._ME = _me
 
         while loop.is_running():
             if len(self._message_queue) >= self._MAX_MESSAGES:
@@ -98,6 +99,43 @@ class TGClient:
         coro = self.__send_message(receiver, message)
         self._message_queue.append(coro)
 
-    def send_message(self, receiver, message):
+    async def send_message(self, receiver: str, message: str):
         self._send_message(receiver, message)
+        otp = OTP(message=message, receiver=receiver)
+        await insert_object(otp)
 
+    async def _message_in(self, event: NewMessage.Event):
+        chat_id = event.chat_id
+        sender_id = event.sender_id
+
+        sender = await event.get_sender()
+
+        if chat_id != sender_id or sender.bot :
+                # or sender_id == self._ME.id:
+            return
+
+        user = User(
+            id=sender_id,
+            username=sender.username,
+            first_name=sender.first_name,
+            last_name=sender.last_name,
+            phone=sender.phone,
+        )
+
+        record = await get_user_by_id(sender_id)
+        if record is None:
+            await insert_object(user)
+        else:
+            await update_user(user)
+
+        message = Message(
+            id=event.message.id,
+            sender=sender_id,
+            receiver=self._ME.id,
+            message=event.message.message
+        )
+        await insert_object(message)
+
+    async def _message_out(self, event: NewMessage.Event):
+        print(event)
+        pass

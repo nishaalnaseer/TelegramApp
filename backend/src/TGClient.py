@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from collections import OrderedDict
 
 from sqlalchemy import select
@@ -10,6 +11,7 @@ from telethon import TelegramClient, events
 from src.crud.database import async_session
 from src.crud.models import OTP, Message, User
 from src.crud.utils import insert_object, get_user_by_id, update_user
+import telethon.tl.functions.channels as channels
 
 logger = logging.getLogger("TG-Client")
 
@@ -42,6 +44,28 @@ class TGClient:
     async def _start(self):
         coro = self._app.start()
         await coro
+
+    async def download(self, channel, limit):
+        channel = await self._app.get_entity(channel)
+        async for message in self._app.iter_messages(channel, limit=None):
+            # Check if the message has media
+            if message.media:
+                # Download media to the current working directory
+
+                if message.id < limit:
+                    break
+
+                await self._app.download_media(
+                    message.media,
+                    file=f"downloads/{message.id}",
+                )
+                print(f"Downloaded media from message ID {message.id}")
+
+    async def get_chats(self):
+        chats_in = await self._app.get_dialogs(limit=None)
+        chats_out = {chat.id: chat.name for chat in chats_in}
+
+        return chats_out
 
     def start(self):
         asyncio.create_task(self._start())
@@ -109,9 +133,8 @@ class TGClient:
         sender_id = event.sender_id
 
         sender = await event.get_sender()
-
         if chat_id != sender_id or sender.bot :
-                # or sender_id == self._ME.id:
+                # or sender_id == self._ME.id: todo correct
             return
 
         user = User(
@@ -132,10 +155,21 @@ class TGClient:
             id=event.message.id,
             sender=sender_id,
             receiver=self._ME.id,
-            message=event.message.message
+            message=event.message.message,
+            time_sent=event.message.date
         )
         await insert_object(message)
 
     async def _message_out(self, event: NewMessage.Event):
-        print(event)
-        pass
+        # todo remove bot, channel, group input
+        message = Message(
+            id=event.message.id,
+            sender=self._ME.id,
+            receiver=event.chat_id,
+            message=event.message.message,
+            time_sent=event.message.date
+        )
+        await insert_object(message)
+
+    # async def get_chat_messages(self, limit, user_id):
+

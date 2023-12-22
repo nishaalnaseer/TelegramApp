@@ -1,6 +1,8 @@
+from datetime import datetime, timedelta
+from operator import and_
 from typing import List
 
-from sqlalchemy import select
+from sqlalchemy import select, or_
 
 from src.crud.database import async_session, engine, Base
 from src.crud.models import OTP, User, Message
@@ -53,3 +55,24 @@ async def update_user(user: User) -> None:
                 user
             )
             await session.commit()
+
+
+async def select_chat_messages(
+        user_id: int, limit: int
+) -> list[Message]:
+    async with async_session() as session:
+        async with session.begin():
+            days_ago = datetime.now() - timedelta(days=limit)
+            records = await session.execute(
+                select(Message).where(
+                    and_(
+                        Message.time_sent > days_ago,
+                        or_(
+                            Message.sender == user_id,
+                            Message.receiver == user_id
+                        ),
+                    )
+                )
+            )
+
+            return records.scalars().all()
